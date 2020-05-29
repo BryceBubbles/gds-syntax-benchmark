@@ -8,6 +8,12 @@ var elapsed : int = 0
 var testvar : int = 0
 var bigarray : Array = []
 
+export(int, 32, 1024) var mesh_size = 64 #width an depth of plane mesh
+export(float, 1, 32, 1) var mesh_spacing = 16.0
+export(int, 1, 100) var mesh_modify_count = 10
+var mesh_instance: MeshInstance
+var noise = OpenSimplexNoise.new()
+
 func fileinit():
 	outfile = File.new()
 	if outfile.open("res://README.md", File.WRITE) != 0:
@@ -54,24 +60,54 @@ func run(junk):
 	if fileinit():
 		print("ERROR OPENING FILE")
 		return 1
+	
 	bigarray = []
 	bigarray.resize(1e6)
-	timeit("warmup", true)
-	compare_funcs_time("array_append", "array_index")
-	compare_funcs_time("array_len", "array_size")
-	compare_funcs_time("array_front", "array_izero")
-	compare_funcs_time("array_back", "array_ineg")
-	compare_funcs_time("var_script", "var_func")
-	compare_funcs_time("var_script", "var_self")
-	compare_funcs_time("iter_for_range", "iter_for_int")
-	compare_funcs_time("iter_for", "iter_while")
-	compare_funcs_time("matches", "ifs")
+	
+	mesh_instance = _create_mesh_instance()
+
+#	timeit("warmup", true)
+#	compare_funcs_time("array_append", "array_index")
+#	compare_funcs_time("array_len", "array_size")
+#	compare_funcs_time("array_front", "array_izero")
+#	compare_funcs_time("array_back", "array_ineg")
+#	compare_funcs_time("var_script", "var_func")
+#	compare_funcs_time("var_loop", "var_func")
+#	compare_funcs_time("var_script", "var_self")
+#	compare_funcs_time("iter_for_range", "iter_for_int")
+#	compare_funcs_time("iter_for", "iter_while")
+#	compare_funcs_time("matches", "ifs")
 	compare_funcs_time("parray_appendrw", "array_appendrw")
-	compare_funcs_time("dontcallfunc", "callfunc")
-	compare_funcs_time("inteval", "inteval_auto")
-	compare_funcs_time("arrayeval", "arrayeval_auto")
-	compare_funcs_time("dicteval", "dicteval_auto")
-	compare_funcs_time("nulleval", "nulleval_auto")
+	compare_funcs_time("parray_index_rw", "array_index_rw")
+#	compare_funcs_time("dontcallfunc", "callfunc")
+#	compare_funcs_time("inteval", "inteval_auto")
+#	compare_funcs_time("arrayeval", "arrayeval_auto")
+#	compare_funcs_time("arrayeval_size", "arrayeval_auto")
+#	compare_funcs_time("dicteval", "dicteval_auto")
+#	compare_funcs_time("nulleval", "nulleval_auto")
+	compare_funcs_time("array_pass", "parray_pass")
+
+	compare_funcs_time("mod_mesh_inst", "mod_array_mesh")
+	compare_funcs_time("mod_mesh_inst", "mod_mesh_arrays")
+	compare_funcs_time("mod_mesh_inst", "mod_mesh_verts")
+
+#view mesh
+#	mod_mesh_inst()
+#	mod_array_mesh()
+#	var mesh = mod_mesh_arrays()
+#	mod_mesh_verts()
+#
+#	var mi_name = "terrain"
+#	var has_child = has_node(mi_name)
+#	if has_child:
+#		var c = get_node(mi_name)
+#		remove_child(c)
+#		c.queue_free()
+#
+#	mesh.set_name("terrain")
+#	add_child(mesh)
+#	mesh.set_owner(owner) 
+
 	outfile.close()
 
 func assign_startusec():
@@ -79,7 +115,7 @@ func assign_startusec():
 
 func assign_elapsed():
 	elapsed = OS.get_ticks_usec() - startusec # do this first for accuracy
-	assert startusec != 0 # then check that startusec had been properly assigned
+	assert(startusec != 0) # then check that startusec had been properly assigned
 	startusec = 0 # reset startusec
 
 func timeit(funcname, quiet=false):
@@ -91,7 +127,7 @@ func timeit(funcname, quiet=false):
 
 func compare_funcs_time(funcname1, funcname2):
 	for fn in [funcname1, funcname2]:
-		assert len(fn) <= 15 # for padding output strings
+		assert(len(fn) <= 15) # for padding output strings
 	timeit(funcname1, true)
 	var elapsed1 = elapsed
 	timeit(funcname2, true)
@@ -155,6 +191,12 @@ func var_func():
 		localvar # read
 		localvar = 0 # write
 		
+func var_loop():
+	for i in 1e6:
+		var loopvar : int = 0
+		loopvar # read
+		loopvar = 0 # write
+		
 func var_self():
 	for i in 1e6:
 		self.testvar # read
@@ -206,6 +248,18 @@ func array_appendrw():
 		a[i] = a[i]
 		i += 1
 
+func parray_index_rw():
+	var a : PoolIntArray = PoolIntArray([])
+	a.resize(1e6)
+	for i in 1e6: a[i] = 0
+	for i in 1e6: a[i] = a[i] + 1
+
+func array_index_rw():
+	var a : Array = []
+	a.resize(1e6)
+	for i in 1e6: a[i] = 0
+	for i in 1e6: a[i] = a[i] + 1
+
 func dontcallfunc():
 	for i in 1e6: pass
 
@@ -233,6 +287,11 @@ func arrayeval_auto():
 	for i in 1e6:
 		if a: pass
 		
+func arrayeval_size():
+	var a : Array = [1]
+	for i in 1e6:
+		if len(a): pass
+		
 func dicteval():
 	var d : Dictionary = {0:0}
 	for i in 1e6:
@@ -252,3 +311,208 @@ func nulleval_auto():
 	var x : Object = null
 	for i in 1e6:
 		if x: pass
+
+
+func array_pass_rw_return(a):
+	for i in 1e6: 
+		a[i] = a[i] + 1
+	return a
+
+func parray_pass():
+	var pa : PoolIntArray = PoolIntArray([])
+	pa.resize(1e6)
+	for i in 1e6: pa[i] = 0
+	for i in 10: pa = array_pass_rw_return(pa)
+
+func array_pass():
+	var a : Array = []
+	a.resize(1e6)
+	for i in 1e6: a[i] = 0
+	for i in 10: a = array_pass_rw_return(a)
+
+
+
+func _create_mesh_arrays(verts_side, quad_size):
+	
+	var verts_total = verts_side * verts_side
+	var indices_total = (verts_side-1) * (verts_side-1) * 6
+	
+	var arrays = Array()
+	var verts = PoolVector3Array()
+	var indices = PoolIntArray()
+	var normals = PoolVector3Array()
+	var uvs = PoolVector2Array()
+	var colors = PoolColorArray()
+	
+	indices.resize(indices_total)
+	verts.resize(verts_total)
+	normals.resize(verts_total)
+	uvs.resize(verts_total)
+	colors.resize(verts_total)
+
+	var x
+	var z
+	var i = 0
+	var j = 0
+	
+	for _x in verts_side:
+		for _z in verts_side:
+			
+			x = _x * quad_size
+			z = _z * quad_size
+			
+			verts[i] = Vector3(x, 0.0, z)
+			normals[i] = Vector3(0.0, 1.0, 0.0)
+			uvs[i] = Vector2(_z/(verts_side), _x/(verts_side))
+			
+			if x and z:
+				indices[j]   = i-verts_side
+				indices[j+1] = i-verts_side-1
+				indices[j+2] = i
+				indices[j+3] = i-verts_side-1
+				indices[j+4] = i-1
+				indices[j+5] = i
+				j += 6
+				
+			i += 1
+	
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_INDEX] = indices
+	
+	return arrays
+
+	
+func _create_mesh_instance():
+	var arrays = _create_mesh_arrays(mesh_size, mesh_spacing)
+	var am = ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_LINES, arrays)
+	var mi = MeshInstance.new()
+	mi.mesh = am
+	return mi
+
+
+
+func _modify_mesh_arrays(arrays:Array):
+	
+	# very slow
+#	for i in arrays[ArrayMesh.ARRAY_VERTEX].size():
+#		arrays[ArrayMesh.ARRAY_VERTEX][i] = arrays[ArrayMesh.ARRAY_VERTEX][i] + Vector3(0.0, 1.0, 0.0)
+
+	var verts = arrays[ArrayMesh.ARRAY_VERTEX]
+	var i = 0
+	for v in verts:
+#		verts[i] = v + Vector3(0.0, 1.0, 0.0)
+		v.y =+ noise.get_noise_2d(v.x, v.z) * 16.0
+		verts[i] = v
+		i += 1
+	arrays[ArrayMesh.ARRAY_VERTEX] = verts
+
+	# converting between Array and Pool array isn't faster
+#	var verts = Array(arrays[ArrayMesh.ARRAY_VERTEX])
+#	for v in verts:
+#		verts[i] = v + Vector3(0.0, 1.0, 0.0)
+#	arrays[ArrayMesh.ARRAY_VERTEX] = PoolVector3Array(verts)
+
+	return arrays
+
+
+func _modify_verts_array(verts:PoolVector3Array):
+	var i = 0
+	for v in verts:
+#		verts[i] = v + Vector3(0.0, 1.0, 0.0)
+		v.y += noise.get_noise_2d(v.x, v.z) * 16.0
+		verts[i] = v
+		i += 1
+	return verts
+
+
+func _modify_mesh_passing_verts(verts:PoolVector3Array):
+	verts = _modify_verts_array(verts)
+	return verts
+
+func _modify_mesh_passing_arrays(arrays:Array):
+	arrays = _modify_mesh_arrays(arrays)
+	return arrays
+
+func _modify_mesh_passing_mesh_instance(mi:MeshInstance):
+	
+	var arrays = mi.mesh.surface_get_arrays(0)
+
+	arrays = _modify_mesh_arrays(arrays)
+	
+	var am = ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_LINES, arrays)
+	
+	var mi2 = MeshInstance.new()
+	mi2.mesh = am
+	
+	return mi2
+
+func _modify_mesh_passing_array_mesh(am:ArrayMesh):
+	
+	var arrays = am.surface_get_arrays(0)
+
+	arrays = _modify_mesh_arrays(arrays)
+	
+	var am2 = ArrayMesh.new()
+	am2.add_surface_from_arrays(Mesh.PRIMITIVE_LINES, arrays)
+	
+	return am2
+
+
+func mod_mesh_inst():
+	
+	var mi = mesh_instance
+	
+	for i in mesh_modify_count:
+		mi = _modify_mesh_passing_mesh_instance(mi)
+	
+	return mi
+
+func mod_array_mesh():
+	
+	var am = mesh_instance.mesh
+
+	for i in mesh_modify_count:
+		am = _modify_mesh_passing_array_mesh(am)
+		
+	var mi = MeshInstance.new()
+	mi.mesh = am
+	
+	return mi
+	
+func mod_mesh_arrays():
+	
+	var arrays = mesh_instance.mesh.surface_get_arrays(0)
+
+	for i in mesh_modify_count:
+		arrays = _modify_mesh_passing_arrays(arrays)
+		
+	var am = ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_LINES, arrays)
+	
+	var mi = MeshInstance.new()
+	mi.mesh = am
+	
+	return mi
+	
+func mod_mesh_verts():
+	
+	var arrays = mesh_instance.mesh.surface_get_arrays(0)
+	var verts = arrays[ArrayMesh.ARRAY_VERTEX]
+
+	for i in mesh_modify_count:
+		verts = _modify_mesh_passing_verts(verts)
+	
+	arrays[ArrayMesh.ARRAY_VERTEX] = verts
+	
+	var am = ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_LINES, arrays)
+	
+	var mi = MeshInstance.new()
+	mi.mesh = am
+	
+	return mi
